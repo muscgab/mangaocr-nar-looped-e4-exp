@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mangaocr-nar-looped-e4-exp"
+version = "1.0.0"
+description = "Japanese manga text-box OCR, non-autoregressive, looped decoder (experimental), 54M parameters"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "Code: Apache-2.0; model weights: CC BY-NC-SA 4.0"}
+dependencies = ["numpy", "Pillow", "torch>=2.1", "safetensors"]
+
+[project.scripts]
+mangaocr-nar-looped-e4-exp = "mangaocr_nar_looped_e4_exp.cli:main"
+
+[tool.setuptools]
+packages = ["mangaocr_nar_looped_e4_exp"]
