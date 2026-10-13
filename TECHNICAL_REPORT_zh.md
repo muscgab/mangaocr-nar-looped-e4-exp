@@ -45,11 +45,11 @@ MonkeyOCRv2-S 视觉编码器（[MonkeyOCRv2](https://arxiv.org/abs/2607.11562)�
 
 解码器一共运行 12 个块步（3 圈 × 4 块）；第 $j = 4(n-1) + i$ 步（第 $n = 1, 2, 3$ 圈、第 $i = 0, \ldots, 3$ 块）读取自己的记忆
 
-$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big]$$
+$$m_j = \big[\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\big]$$
 
 $$b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c)$$
 
-$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
+$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l \mathrm{RMSNorm}_l(h_l)$$
 
 - $\mathrm{Bridge}$ ：RMSNorm → Linear 384→1024 → GELU → Linear 1024→512 → RMSNorm。
 - $\mathrm{Pos}(r, c)$ ：图块相对行、列位置的 32 维傅里叶特征经过一个线性层。
@@ -112,7 +112,7 @@ $$s^{(n)}_{\text{in}} = \mathrm{FinalNorm}_{n-1}\big(s^{(n-1)}_{\text{out}}\big)
 
 每一圈 $n$ ：对放字或第一个结束符的槽位求交叉熵（在这些槽位上取平均），加上 0.1 × 占位头的二元交叉熵。三圈等权；另有一个单调项，惩罚从上一圈到下一圈损失变差的槽位：
 
-$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
+$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1 \mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
 
 其中 $\mathrm{sg}$ 表示截断梯度。
 

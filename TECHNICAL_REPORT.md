@@ -60,11 +60,11 @@ blocks 1–11 ($h_1 \ldots h_{11}$) and the final post-normed output $h_{12}$.
 The decoder runs 12 block steps in total (3 loops × 4 blocks); step $j = 4(n-1) + i$ (loop $n = 1, 2, 3$, block
 $i = 0, \ldots, 3$) reads its own memory
 
-$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big]$$
+$$m_j = \big[\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\big]$$
 
 $$b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c)$$
 
-$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
+$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l \mathrm{RMSNorm}_l(h_l)$$
 
 - $\mathrm{Bridge}$: RMSNorm → Linear 384→1024 → GELU → Linear 1024→512 → RMSNorm.
 - $\mathrm{Pos}(r, c)$: a linear map of 32 Fourier features of the patch's relative row and column.
@@ -146,7 +146,7 @@ For every loop $n$: cross-entropy over the slots that hold a character or the fi
 plus 0.1 × binary cross-entropy of the occupancy head. The three loops are weighted equally, and a monotonicity term
 penalizes slots whose loss gets worse from one loop to the next:
 
-$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
+$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1 \mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
 
 where $\mathrm{sg}$ stops the gradient.
 
