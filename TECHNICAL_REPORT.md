@@ -60,9 +60,11 @@ blocks 1–11 ($h_1 \ldots h_{11}$) and the final post-normed output $h_{12}$.
 The decoder runs 12 block steps in total (3 loops × 4 blocks); step $j = 4(n-1) + i$ (loop $n = 1, 2, 3$, block
 $i = 0, \ldots, 3$) reads its own memory
 
-$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big],\qquad
-b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c),\qquad
-f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
+$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big]$$
+
+$$b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c)$$
+
+$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
 
 - $\mathrm{Bridge}$: RMSNorm → Linear 384→1024 → GELU → Linear 1024→512 → RMSNorm.
 - $\mathrm{Pos}(r, c)$: a linear map of 32 Fourier features of the patch's relative row and column.
@@ -77,9 +79,11 @@ f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
 size 2048. The four blocks' attention and FFN weights are shared by the three loops; the pre-norm weights and the three
 residual scales of every block are separate for each step $j$:
 
-$$s \leftarrow s + \sigma^{(1)}_j \odot \mathrm{SelfAttn}(\mathrm{RMSNorm}^{(1)}_j(s)),\quad
-s \leftarrow s + \sigma^{(2)}_j \odot \mathrm{CrossAttn}(\mathrm{RMSNorm}^{(2)}_j(s), m_j),\quad
-s \leftarrow s + \sigma^{(3)}_j \odot \mathrm{FFN}(\mathrm{RMSNorm}^{(3)}_j(s))$$
+$$s \leftarrow s + \sigma^{(1)}_j \odot \mathrm{SelfAttn}(\mathrm{RMSNorm}^{(1)}_j(s))$$
+
+$$s \leftarrow s + \sigma^{(2)}_j \odot \mathrm{CrossAttn}(\mathrm{RMSNorm}^{(2)}_j(s), m_j)$$
+
+$$s \leftarrow s + \sigma^{(3)}_j \odot \mathrm{FFN}(\mathrm{RMSNorm}^{(3)}_j(s))$$
 
 The input to loop 1 is $s_0 = P_{\text{slot}} + E_{\text{BLANK}}$, a learned position vector per slot plus the embedding of an input-only BLANK token (no image-dependent input). Between loops the normalized
 state that feeds the read-out is passed on (the boundary used by [Ouro](https://arxiv.org/abs/2510.25741)), plus an input
@@ -91,8 +95,8 @@ with $\beta_n, e_n \in \mathbb{R}^{512}$ initialized to 0. No tokens are passed 
 
 ### 2.5 Read-out
 
-After loop $n$, $\mathrm{logits} = \mathrm{FinalNorm}_n(s)\,E_{0:6818}^{\top} + \text{bias}$, with the output head tied to the
-character embedding $E$. The 6,818 classes are the 6,817 characters of `nar_vocabulary_6817.json` and the end token; the
+After loop $n$, $\mathrm{logits} = \mathrm{FinalNorm}_n(s) E^{T} + \mathrm{bias}$, with the output head tied to the
+character embedding $E$ (its rows for the 6,818 output classes). The 6,818 classes are the 6,817 characters of `nar_vocabulary_6817.json` and the end token; the
 argmax of the 65 slots is cut at the first end token. Reading after loop $n$ computes only $n$ loops. During training an
 extra occupancy head (one logit per slot) was trained; it is not used for inference and is not included in the weights.
 
@@ -142,10 +146,9 @@ For every loop $n$: cross-entropy over the slots that hold a character or the fi
 plus 0.1 × binary cross-entropy of the occupancy head. The three loops are weighted equally, and a monotonicity term
 penalizes slots whose loss gets worse from one loop to the next:
 
-$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big)
-+ 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \operatorname{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \operatorname{sg}(\mathrm{CE}_{n-1,t})\big)$$
+$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
 
-where $\operatorname{sg}$ stops the gradient.
+where $\mathrm{sg}$ stops the gradient.
 
 ### 3.3 Optimization
 

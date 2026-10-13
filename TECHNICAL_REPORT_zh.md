@@ -39,30 +39,34 @@ e4 是一个 5,420 万参数的非自回归 OCR 模型，输入为裁好的日�
 
 ### 2.2 编码器
 
-MonkeyOCRv2-S 视觉编码器（[MonkeyOCRv2](https://arxiv.org/abs/2607.11562)），由 [zenosai/MonkeyOCRv2-S](https://huggingface.co/zenosai/MonkeyOCRv2-S) 初始化：图块 14、宽度 384、12 个块、6 个头、SwiGLU MLP 1536、按（行、列）的二维旋转位置编码。我们保留图块嵌入 $h_0$、第 1–11 块的输出 $h_1 \ldots h_{11}$，以及经过最终归一化的输出 $h_{12}$。
+MonkeyOCRv2-S 视觉编码器（[MonkeyOCRv2](https://arxiv.org/abs/2607.11562)），由 [zenosai/MonkeyOCRv2-S](https://huggingface.co/zenosai/MonkeyOCRv2-S) 初始化：图块 14、宽度 384、12 个块、6 个头、SwiGLU MLP 1536、按（行、列）的二维旋转位置编码。我们保留图块嵌入 $h_0$ 、第 1–11 块的输出 $h_1 \ldots h_{11}$ ，以及经过最终归一化的输出 $h_{12}$ 。
 
 ### 2.3 带 gamma 融合的记忆
 
 解码器一共运行 12 个块步（3 圈 × 4 块）；第 $j = 4(n-1) + i$ 步（第 $n = 1, 2, 3$ 圈、第 $i = 0, \ldots, 3$ 块）读取自己的记忆
 
-$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big],\qquad
-b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c),\qquad
-f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
+$$m_j = \big[\,\text{null}_1;\ \text{null}_2;\ b + \gamma_j \odot W_o f_j\,\big]$$
 
-- $\mathrm{Bridge}$：RMSNorm → Linear 384→1024 → GELU → Linear 1024→512 → RMSNorm。
-- $\mathrm{Pos}(r, c)$：图块相对行、列位置的 32 维傅里叶特征经过一个线性层。
-- $w_j \in \mathbb{R}^{12}$：第 $j$ 步对 12 个编码器深度的静态权重；$\gamma_j \in \mathbb{R}^{512}$：逐通道缩放，初始化为 0，所以训练开始时每一步只读 $b$。
+$$b = \mathrm{Bridge}(h_{12}) + \mathrm{Pos}(r, c)$$
+
+$$f_j = \sum_{l=0}^{11} \mathrm{softmax}(w_j)_l\, \mathrm{RMSNorm}_l(h_l)$$
+
+- $\mathrm{Bridge}$ ：RMSNorm → Linear 384→1024 → GELU → Linear 1024→512 → RMSNorm。
+- $\mathrm{Pos}(r, c)$ ：图块相对行、列位置的 32 维傅里叶特征经过一个线性层。
+- $w_j \in \mathbb{R}^{12}$ ：第 $j$ 步对 12 个编码器深度的静态权重； $\gamma_j \in \mathbb{R}^{512}$ ：逐通道缩放，初始化为 0，所以训练开始时每一步只读 $b$ 。
 - 每份记忆前面拼接两个可学习的空 token。
 
 ### 2.4 循环解码器
 
 65 个输出槽位（64 个字 + 结束符），宽度 512，8 个头。每个块包含：槽位间的自注意力（QK-norm，对每个头一半的维度做一维 RoPE）、对 $m_j$ 的交叉注意力（查询和键都做 QK-norm）、隐藏层 2048 的 SwiGLU FFN。4 个块的注意力与 FFN 权重在 3 圈之间共享；每个块的前置归一化权重和 3 个残差缩放在每一步 $j$ 各自独立：
 
-$$s \leftarrow s + \sigma^{(1)}_j \odot \mathrm{SelfAttn}(\mathrm{RMSNorm}^{(1)}_j(s)),\quad
-s \leftarrow s + \sigma^{(2)}_j \odot \mathrm{CrossAttn}(\mathrm{RMSNorm}^{(2)}_j(s), m_j),\quad
-s \leftarrow s + \sigma^{(3)}_j \odot \mathrm{FFN}(\mathrm{RMSNorm}^{(3)}_j(s))$$
+$$s \leftarrow s + \sigma^{(1)}_j \odot \mathrm{SelfAttn}(\mathrm{RMSNorm}^{(1)}_j(s))$$
 
-第 1 圈的输入是 $s_0 = P_{\text{slot}} + E_{\text{BLANK}}$，即每个槽位一个可学习的位置向量，加上一个只用于输入的 BLANK token 的嵌入（与图像无关）。圈与圈之间传递的是送入读出头的那个归一化后的状态（[Ouro](https://arxiv.org/abs/2510.25741) 的做法），再加上输入注入和圈嵌入：
+$$s \leftarrow s + \sigma^{(2)}_j \odot \mathrm{CrossAttn}(\mathrm{RMSNorm}^{(2)}_j(s), m_j)$$
+
+$$s \leftarrow s + \sigma^{(3)}_j \odot \mathrm{FFN}(\mathrm{RMSNorm}^{(3)}_j(s))$$
+
+第 1 圈的输入是 $s_0 = P_{\text{slot}} + E_{\text{BLANK}}$ ，即每个槽位一个可学习的位置向量，加上一个只用于输入的 BLANK token 的嵌入（与图像无关）。圈与圈之间传递的是送入读出头的那个归一化后的状态（[Ouro](https://arxiv.org/abs/2510.25741) 的做法），再加上输入注入和圈嵌入：
 
 $$s^{(n)}_{\text{in}} = \mathrm{FinalNorm}_{n-1}\big(s^{(n-1)}_{\text{out}}\big) + \beta_n \odot s_0 + e_n,\qquad n = 2, 3$$
 
@@ -70,14 +74,14 @@ $$s^{(n)}_{\text{in}} = \mathrm{FinalNorm}_{n-1}\big(s^{(n-1)}_{\text{out}}\big)
 
 ### 2.5 读出
 
-第 $n$ 圈之后，$\mathrm{logits} = \mathrm{FinalNorm}_n(s)\,E_{0:6818}^{\top} + \text{bias}$，输出头与字符嵌入 $E$ 共享权重。6,818 个类别是 `nar_vocabulary_6817.json` 中的 6,817 个字加结束符；65 个槽位取 argmax 后在第一个结束符处截断。读第 $n$ 圈时只计算前 $n$ 圈。训练时还训练了一个占位头（每个槽位一个 logit），推理不用，权重中也不包含。
+第 $n$ 圈之后， $\mathrm{logits} = \mathrm{FinalNorm}_n(s) E^{T} + \mathrm{bias}$ ，输出头与字符嵌入 $E$ 共享权重（取其中 6,818 个输出类别的行）。6,818 个类别是 `nar_vocabulary_6817.json` 中的 6,817 个字加结束符；65 个槽位取 argmax 后在第一个结束符处截断。读第 $n$ 圈时只计算前 $n$ 圈。训练时还训练了一个占位头（每个槽位一个 logit），推理不用，权重中也不包含。
 
 ### 2.6 参数量
 
 | 部分 | 参数 |
 |---|---|
 | 编码器（MonkeyOCRv2-S） | 28,547,712 |
-| 记忆（bridge、位置、各深度归一化、$W_o$、$\gamma$、$w$、空 token） | 1,143,312 |
+| 记忆（bridge、位置、各深度归一化、 $W_o$ 、 $\gamma$ 、 $w$ 、空 token） | 1,143,312 |
 | 解码器块（4 个，各圈共享） | 20,972,544 |
 | 每步的归一化与残差缩放（12 步） | 36,864 |
 | 最终归一化（3）、输入注入（2）、圈嵌入（2） | 3,584 |
@@ -106,19 +110,18 @@ $$s^{(n)}_{\text{in}} = \mathrm{FinalNorm}_{n-1}\big(s^{(n-1)}_{\text{out}}\big)
 
 ### 3.2 训练目标
 
-每一圈 $n$：对放字或第一个结束符的槽位求交叉熵（在这些槽位上取平均），加上 0.1 × 占位头的二元交叉熵。三圈等权；另有一个单调项，惩罚从上一圈到下一圈损失变差的槽位：
+每一圈 $n$ ：对放字或第一个结束符的槽位求交叉熵（在这些槽位上取平均），加上 0.1 × 占位头的二元交叉熵。三圈等权；另有一个单调项，惩罚从上一圈到下一圈损失变差的槽位：
 
-$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big)
-+ 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \operatorname{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \operatorname{sg}(\mathrm{CE}_{n-1,t})\big)$$
+$$\mathcal{L} = \frac{1}{3}\sum_{n=1}^{3}\big(\mathrm{CE}_n + 0.1\,\mathrm{BCE}^{\text{occ}}_n\big) + 0.1 \cdot \frac{1}{2}\sum_{n=2}^{3} \mathrm{mean}_{\text{slots}} \mathrm{ReLU}\big(\mathrm{CE}_{n,t} - \mathrm{sg}(\mathrm{CE}_{n-1,t})\big)$$
 
-其中 $\operatorname{sg}$ 表示截断梯度。
+其中 $\mathrm{sg}$ 表示截断梯度。
 
 ### 3.3 优化
 
 | 设置 | 取值 |
 |---|---|
-| 初始化 | 编码器取 MonkeyOCRv2-S；解码器随机初始化（dropout 0.1）；各圈的归一化与残差缩放初值相同；$\gamma$、$\beta$、$e$ 初值为 0 |
-| 优化器 | AdamW，$\beta = (0.9, 0.98)$，权重衰减 0.01，梯度裁剪 1.0 |
+| 初始化 | 编码器取 MonkeyOCRv2-S；解码器随机初始化（dropout 0.1）；各圈的归一化与残差缩放初值相同； $\gamma$ 、 $\beta$ 、 $e$ 初值为 0 |
+| 优化器 | AdamW， $\beta = (0.9, 0.98)$ ，权重衰减 0.01，梯度裁剪 1.0 |
 | 学习率 | 解码器 4.9e-4，编码器 4.9e-5；在全部 78,125 步上余弦衰减 |
 | 预热 | 解码器 188 步；编码器前 750 步冻结，之后 375 步预热 |
 | 批大小 | 128（4 卡 × 32），78,125 步，见过 10,000,000 张图（4.0 轮） |
